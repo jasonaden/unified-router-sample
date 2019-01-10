@@ -1,6 +1,9 @@
 import { NgModule } from '@angular/core';
 import { Routes, RouterModule } from '@angular/router';
 import { HomeComponent } from './home/home.component';
+import { Location, LocationStrategy } from '@angular/common';
+import { PatchedLocation } from './upgrade/angular/patched-location';
+import { UpgradeModule } from '@angular/upgrade/static';
 
 const routes: Routes = [
   {path: '', redirectTo: '/home', pathMatch: 'full'},
@@ -9,7 +12,10 @@ const routes: Routes = [
 ];
 
 @NgModule({
-  imports: [RouterModule.forRoot(routes)],
-  exports: [RouterModule]
+  imports: [RouterModule.forRoot(routes), UpgradeModule],
+  exports: [RouterModule],
+  providers: [
+    {provide: Location, useClass: PatchedLocation, deps: [LocationStrategy, UpgradeModule]}
+  ]
 })
 export class AppRoutingModule { }
