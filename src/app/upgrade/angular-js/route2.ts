@@ -1,5 +1,7 @@
 
 import * as angular from 'angular';
+import { Router, Route as Config } from '@angular/router';
+import { RenderAngularJsRoute } from '../angular/angular-js-route.component';
 
 /* global routeToRegExp: false */
 /* global shallowCopy: false */
@@ -23,17 +25,18 @@ var noop;
  *
  */
 /* global -ngRouteModule */
-var ngRouteModule = angular.
-  module('ngRoute', []).
+export var ngRouteUpgradeModule = angular.
+  module('ngRouteUpgrade', []).
+  // @ts-ignore
   info({ angularVersion: '"NG_VERSION_FULL"' }).
   provider('$route', $RouteProvider).
   // Ensure `$route` will be instantiated in time to capture the initial `$locationChangeSuccess`
   // event (unless explicitly disabled). This is necessary in case `ngView` is included in an
   // asynchronously loaded template.
   run(instantiateRoute);
+// @ts-ignore
 var $routeMinErr = angular.$$minErr('ngRoute');
 var isEagerInstantiationEnabled;
-
 
 /**
  * @ngdoc provider
@@ -50,7 +53,7 @@ var isEagerInstantiationEnabled;
  * ## Dependencies
  * Requires the {@link ngRoute `ngRoute`} module to be installed.
  */
-function $RouteProvider() {
+export function $RouteProvider() {
   isArray = angular.isArray;
   isObject = angular.isObject;
   isDefined = angular.isDefined;
@@ -214,7 +217,7 @@ function $RouteProvider() {
    */
   this.when = function(path, route) {
     //copy original route object to preserve params inherited from proto chain
-    var routeCopy = shallowCopy(route);
+    var routeCopy = {...route};
     if (angular.isUndefined(routeCopy.reloadOnUrl)) {
       routeCopy.reloadOnUrl = true;
     }
@@ -326,7 +329,8 @@ function $RouteProvider() {
                '$templateRequest',
                '$sce',
                '$browser',
-      function($rootScope, $location, $routeParams, $q, $injector, $templateRequest, $sce, $browser) {
+               'DowngradedRouter',
+      function($rootScope, $location, $routeParams, $q, $injector, $templateRequest, $sce, $browser, router: Router) {
 
     /**
      * @ngdoc service
@@ -528,10 +532,11 @@ function $RouteProvider() {
      * @param {Route} current Current/previous route information.
      */
 
-    var forceReload = false,
+     var forceReload = false,
         preparedRoute,
         preparedRouteIsUpdateOnly,
         $route = {
+          current: {} as any,
           routes: routes,
 
           /**
@@ -557,7 +562,11 @@ function $RouteProvider() {
             };
 
             $rootScope.$evalAsync(function() {
+              // TODO: Fix this as the param is no longer a $locationChange event.
+              // We need to implement the reload functionality.
+              throw "Fixme";
               prepareRoute(fakeLocationEvent);
+              // @ts-ignore
               if (!fakeLocationEvent.defaultPrevented) commitRoute();
             });
           },
@@ -584,11 +593,21 @@ function $RouteProvider() {
             } else {
               throw $routeMinErr('norout', 'Tried updating route with no current route');
             }
-          }
+          },
+
+          prepareRoute,
+          commitRoute
         };
 
-    $rootScope.$on('$locationChangeStart', prepareRoute);
-    $rootScope.$on('$locationChangeSuccess', commitRoute);
+    // $rootScope.$on('$locationChangeStart', prepareRoute);
+    // $rootScope.$on('$locationChangeSuccess', commitRoute);
+
+    const startIdx = router.config.findIndex((c, i, a) => isWildcard(c) || i === a.length - 1);
+    // convert routes to array
+    const mappedRoutes = Object.keys(routes).map(r => {
+      return {path: cleanUrl(r), component: RenderAngularJsRoute, data: routes[r]};
+    });
+    router.config.splice(startIdx, 0, ...mappedRoutes);
 
     return $route;
 
@@ -626,22 +645,27 @@ function $RouteProvider() {
       return params;
     }
 
-    function prepareRoute($locationEvent) {
+    function prepareRoute(route) {
+      // debugger;
       var lastRoute = $route.current;
 
-      preparedRoute = parseRoute();
-      preparedRouteIsUpdateOnly = isNavigationUpdateOnly(preparedRoute, lastRoute);
+      const preparedRoute = parseRoute(route);
+      const preparedRouteIsUpdateOnly = isNavigationUpdateOnly(preparedRoute, lastRoute);
 
       if (!preparedRouteIsUpdateOnly && (lastRoute || preparedRoute)) {
         if ($rootScope.$broadcast('$routeChangeStart', preparedRoute, lastRoute).defaultPrevented) {
-          if ($locationEvent) {
-            $locationEvent.preventDefault();
-          }
+          // TODO: Solve handling $location events. Might need to re-wire from the outside back in and confirm
+          // the evnet haven't been cancelled already. Definitely need to pass the event object around so
+          // default can be prevented here.
+          // if ($locationEvent) {
+          //   $locationEvent.preventDefault();
+          // }
         }
       }
+      return [preparedRoute, preparedRouteIsUpdateOnly];
     }
 
-    function commitRoute() {
+    function commitRoute([preparedRoute, preparedRouteIsUpdateOnly]) {
       var lastRoute = $route.current;
       var nextRoute = preparedRoute;
 
@@ -652,7 +676,7 @@ function $RouteProvider() {
       } else if (nextRoute || lastRoute) {
         forceReload = false;
         $route.current = nextRoute;
-
+        
         var nextRoutePromise = $q.resolve(nextRoute);
 
         $browser.$$incOutstandingRequestCount('$route');
@@ -691,7 +715,10 @@ function $RouteProvider() {
     function getRedirectionData(route) {
       var data = {
         route: route,
-        hasRedirection: false
+        hasRedirection: false,
+        path: '',
+        search: {},
+        url: ''
       };
 
       if (route) {
@@ -795,19 +822,24 @@ function $RouteProvider() {
     /**
      * @returns {Object} the current active route, by matching it against the URL
      */
-    function parseRoute() {
+    function parseRoute(route) {
       // Match a route
       var params, match;
-      angular.forEach(routes, function(route, path) {
-        if (!match && (params = switchRouteMatcher($location.path(), route))) {
-          match = inherit(route, {
-            params: angular.extend({}, $location.search(), params),
-            pathParams: params});
-          match.$$route = route;
-        }
-      });
+      // angular.forEach(routes, function(route, path) {
+      //   if (!match && (params = switchRouteMatcher($location.path(), route))) {
+          // TODO: Pluck out `params` object
+      match = inherit(route, {
+        params: angular.extend({}, $location.search(), params),
+        pathParams: params});
+      match.$$route = route;
+      //   }
+      // });
       // No route matched; fallback to "otherwise" route
-      return match || routes[null] && inherit(routes[null], {params: {}, pathParams:{}});
+      // @ts-ignore
+      // This was previously handling the "otherwise" route which would be in `routes[null]`. This
+      // now needs to be handled only by the Angular router.
+      // return match || routes[null] && inherit(routes[null], {params: {}, pathParams:{}});
+      return match;
     }
 
     /**
@@ -862,6 +894,8 @@ function instantiateRoute($injector) {
   }
 }
 
+'use strict';
+
 /* global routeToRegExp: true */
 
 /**
@@ -905,4 +939,15 @@ function routeToRegExp(path, opts) {
       opts.caseInsensitiveMatch ? 'i' : ''
     )
   };
+}
+
+// Utils
+
+
+function cleanUrl(url: string) {
+  return url.charAt(0) === '/' ? url.slice(1) : url;
+}
+
+function isWildcard(c: Config) {
+  return (c.pathMatch !== 'full' && c.path === '') || c.path === '**';
 }
