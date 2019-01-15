@@ -27,11 +27,13 @@ export class UpgradeLocationService {
       return this.location.path(true);
     } else {
       const currPath = this.path();
-      this.$rootScope.$broadcast('$locationChangeStart', path, currPath,
-        null, null);
-      this.location.go(path);
-      this.$rootScope.$broadcast('$locationChangeSuccess', path, currPath,
-        null, null);
+      
+      if (!this.$rootScope.$broadcast('$locationChangeStart', path, currPath,
+        null, null).defaultPrevented) {
+        this.location.go(path);
+        this.$rootScope.$broadcast('$locationChangeSuccess', path, currPath,
+          null, null); 
+      }
       return this;
     }
   }
