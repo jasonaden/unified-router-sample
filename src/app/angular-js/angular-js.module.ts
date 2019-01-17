@@ -7,12 +7,14 @@ import { UpgradeModule, setAngularJSGlobal } from '@angular/upgrade/static';
 import { AngularJSComponent } from './angular-js.component';
 
 import {appModule} from './app/module';
+import { ROUTES } from './app/routes';
 
 setAngularJSGlobal(angular);
 
 let initalized = false;
 
-const routes: Routes = [{path: '**', component: AngularJSComponent}];
+const routes: Routes = [
+  {path: '**', component: AngularJSComponent}];
 
 @NgModule({
   declarations: [AngularJSComponent],
